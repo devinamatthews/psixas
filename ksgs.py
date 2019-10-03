@@ -28,7 +28,7 @@ def DFTGroundState(mol,func,**kwargs):
     aux   = psi4.core.BasisSet.build(mol, "DF_BASIS_SCF", "", "JKFIT", basis)
 
     sup = psi4.driver.dft.build_superfunctional(func, False)[0]
-    psi4.core.be_quiet()
+    #psi4.core.be_quiet()
     mints = psi4.core.MintsHelper(wfn.basisset())
     
     sup.set_deriv(2)
@@ -76,6 +76,11 @@ def DFTGroundState(mol,func,**kwargs):
         psi4.core.print_out("Restarting Calculation")
         Ca = np.load(prefix+"_gsorbs.npz")["Ca"]
         Cb = np.load(prefix+"_gsorbs.npz")["Cb"]
+    else:
+        Ca = np.zeros((0,0))
+        Cb = np.zeros((0,0))
+        
+    if Ca.shape == (nbf,nbf):
         Cocca.np[:]  = Ca[:, :nalpha]
         Da     = Ca[:, :nalpha] @ Ca[:, :nalpha].T
         Coccb.np[:]  = Cb[:, :nbeta]
@@ -250,11 +255,8 @@ def DFTGroundState(mol,func,**kwargs):
     occa = np.zeros(nbf,dtype=np.float)
     occb = np.zeros(nbf,dtype=np.float)
 
-
     occa[:nalpha] = 1.0
     occb[:nbeta]  = 1.0
-
-
 
     OCCA = psi4.core.Vector(nbf)
     OCCB = psi4.core.Vector(nbf)
@@ -270,18 +272,59 @@ def DFTGroundState(mol,func,**kwargs):
     uhf.occupation_a().np[:] = occa
     uhf.occupation_b().np[:] = occb
 
-    OCCA.print_out()
-    OCCB.print_out()
+    uhf.epsilon_a().print_out()
+    uhf.epsilon_b().print_out()
 
     mw = psi4.core.MoldenWriter(uhf)
     mw.write(prefix+'_gs.molden',uhf.Ca(),uhf.Cb(),uhf.epsilon_a(),uhf.epsilon_b(),OCCA,OCCB,True)
     psi4.core.print_out("Moldenfile written\n")
 
     np.savez(prefix+'_gsorbs',Ca=Ca,Cb=Cb,occa=occa,occb=occb,epsa=epsa,epsb=epsb)
-    psi4.core.print_out("Canoncical Orbitals written\n\n")
+    psi4.core.print_out("Canonical Orbitals written\n\n")
 
     psi4.core.set_variable('CURRENT ENERGY', SCF_E)
     psi4.core.set_variable('GS ENERGY', SCF_E)
+    
+    bas = wfn.basisset()
 
+    with open("GENBAS", "w") as genbas:
+        genbas.write(bas.genbas())
+        
+    maxl = bas.max_am()
+    map = []
+    lmap = [[0],
+            [1,2,0],
+            [0,4,1,3,2],
+            [1,2,0,5,4,6,3],
+            [0,4,1,7,6,3,8,5,2],
+            [1,2,3,5,8,10,7,6,0,9,4],
+            [11,4,9,7,10,3,12,5,8,0,6,2,1]]
 
+    for i in range(mol.natom()):
+        for l in range(maxl+1):
+            for li in range(2*l+1):
+                for j in range(bas.nshell()):
+                    s = bas.shell(j)
+                    if bas.shell_to_center(j) == i and s.am == l:
+                        k = bas.shell_to_basis_function(j)
+                        if l > 6:
+                            m = l - li//2
+                            k += 2*m + li%2
+                        else:
+                            k += lmap[l][li]
+                        map.append(k)
+                        
+    assert(len(map) == mints.nbf())
+    assert(sorted(map) == list(range(mints.nbf())))
+        
+    with open("OLDMOS", "w") as oldmos:
+        for C in (Ca, Cb):
+            for j0 in range(0,mints.nbf(),4):
+                for i in range(mints.nbf()):
+                    for j in range(j0,min(mints.nbf(),j0+4)):
+                        oldmos.write("%30.20e" % (C[map[i]][j]));
+                    oldmos.write('\n');
+                
+    open("JFSGUESS", "w").close()
+                    
     return uhf

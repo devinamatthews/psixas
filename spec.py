@@ -28,7 +28,7 @@ def CalcSpec(mol,func):
     printOccupation("Alpha",occa,15)
     printOccupation("Beta ",occb,15)
 
-    psi4.core.be_quiet()
+    #psi4.core.be_quiet()
     wfn   = psi4.core.Wavefunction.build(mol,psi4.core.get_global_option('BASIS'))
     mints = psi4.core.MintsHelper(wfn.basisset())
     psi4.core.reopen_outfile()
